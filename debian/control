@@ -1,0 +1,16 @@
+Source: r8127
+Section: contrib/kernel
+Priority: optional
+Maintainer: Alpha Area <awpak78@hotmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-sequence-dkms,
+Standards-Version: 4.6.1
+Homepage: https://www.realtek.com/Download/List?cate_id=584
+Vcs-Git: https://github.com/minisforum-repo/r8127-dkms.git
+
+Package: r8127-dkms
+Architecture: all
+Depends: ${misc:Depends}
+Description: This is the Linux device driver released for Realtek 10 Gigabit 
+ Ethernet controllers with PCI-Express interface.
