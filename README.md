@@ -14,10 +14,12 @@ The primary advantage of this method is that the kernel module will be automatic
 
 1.  Navigate to the [Releases](https://github.com/minisforum-repo/r8127-dkms/releases) page.
 2.  Download the latest `.deb` package.
-3.  Install the package using `dpkg`:
+3.  Install the package using `apt`:
     ```bash
-    sudo dpkg -i r8127-dkms_*.deb
+    sudo apt install ./r8127-dkms_*.deb
     ```
+
+If dkms is not automatically compiled, it may be due to the lack of kernel header. Please manually install `sudo apt install linux-headers-$(uname -r)` and then reinstall r8127-dkms
 
 ### Method 2: Using autorun.sh
 
