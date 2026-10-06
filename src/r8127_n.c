@@ -303,6 +303,8 @@ static int rtl8127_rx_interrupt(struct net_device *, struct rtl8127_private *, s
 static int rtl8127_tx_interrupt(struct rtl8127_tx_ring *ring, int budget);
 static int rtl8127_tx_interrupt_with_vector(struct rtl8127_private *tp, const int message_id, int budget);
 static void rtl8127_wait_for_quiescence(struct net_device *dev);
+static void rtl8127_setup_interrupt_mask(struct rtl8127_private *tp);
+static int rtl8127_set_real_num_queue(struct rtl8127_private *tp);
 static int rtl8127_change_mtu(struct net_device *dev, int new_mtu);
 static void rtl8127_down(struct net_device *dev);
 
@@ -7264,11 +7266,106 @@ static void rtl8127_get_channels(struct net_device *dev,
 {
         struct rtl8127_private *tp = netdev_priv(dev);
 
-        channel->max_rx = tp->HwSuppNumRxQueues;
-        channel->max_tx = tp->HwSuppNumTxQueues;
+        channel->max_rx = 1;
+        channel->max_tx = 1;
+#ifndef ENABLE_LIB_SUPPORT
+        if (tp->HwCurrIsrVer == 6 &&
+            (tp->features & RTL_FEATURE_MSIX) &&
+            tp->irq_nvecs >= tp->min_irq_nvecs) {
+#ifdef ENABLE_RSS_SUPPORT
+                if (tp->EnableRss)
+                        channel->max_rx = tp->HwSuppNumRxQueues;
+#endif
+#ifdef ENABLE_MULTIPLE_TX_QUEUE
+                channel->max_tx = tp->HwSuppNumTxQueues;
+#endif
+        }
+#endif
         channel->rx_count = tp->num_rx_rings;
         channel->tx_count = tp->num_tx_rings;
 }
+
+#if defined(ENABLE_RSS_SUPPORT) && defined(ENABLE_MULTIPLE_TX_QUEUE) && !defined(ENABLE_LIB_SUPPORT)
+static int rtl8127_set_channels(struct net_device *dev,
+                                struct ethtool_channels *channel)
+{
+        struct rtl8127_private *tp = netdev_priv(dev);
+        struct ethtool_channels limits = { 0 };
+        unsigned int old_rx = tp->num_rx_rings;
+        unsigned int old_tx = tp->num_tx_rings;
+        u8 old_indir[RTL8127_MAX_INDIRECTION_TABLE_ENTRIES];
+        bool default_indir = true;
+        bool running = netif_running(dev);
+        unsigned int i;
+        int rc, restore_rc;
+
+        ASSERT_RTNL();
+
+        rtl8127_get_channels(dev, &limits);
+        /* Queue count registers encode log2(count). */
+        if (channel->combined_count || channel->other_count ||
+            !is_power_of_2(channel->rx_count) ||
+            !is_power_of_2(channel->tx_count) ||
+            channel->rx_count > limits.max_rx ||
+            channel->tx_count > limits.max_tx)
+                return -EINVAL;
+
+        if (channel->rx_count == old_rx && channel->tx_count == old_tx)
+                return 0;
+
+        if (!netif_device_present(dev))
+                return -ENODEV;
+        if (tp->rtk_enable_diag)
+                return -EBUSY;
+
+        memcpy(old_indir, tp->rss_indir_tbl, sizeof(old_indir));
+        if (channel->rx_count != old_rx) {
+                for (i = 0; i < tp->HwSuppIndirTblEntries; i++)
+                        if (old_indir[i] != ethtool_rxfh_indir_default(i, old_rx))
+                                default_indir = false;
+
+                /* Preserve custom RSS mappings, but never target a removed ring. */
+                if (!default_indir)
+                        for (i = 0; i < tp->HwSuppIndirTblEntries; i++)
+                                if (old_indir[i] >= channel->rx_count)
+                                        return -EINVAL;
+        }
+
+        /* close() quiesces DMA/NAPI and frees rings using the old counts. */
+        if (running)
+                rtl8127_close(dev);
+
+        tp->num_rx_rings = channel->rx_count;
+        tp->num_tx_rings = channel->tx_count;
+        if (channel->rx_count != old_rx && default_indir)
+                for (i = 0; i < tp->HwSuppIndirTblEntries; i++)
+                        tp->rss_indir_tbl[i] =
+                                ethtool_rxfh_indir_default(i, tp->num_rx_rings);
+        rtl8127_setup_interrupt_mask(tp);
+
+        rc = rtl8127_set_real_num_queue(tp);
+        if (!rc && running)
+                rc = rtl8127_open(dev);
+        if (!rc)
+                return 0;
+
+        /* A failed open has freed its allocations. Restore the previous setup. */
+        tp->num_rx_rings = old_rx;
+        tp->num_tx_rings = old_tx;
+        memcpy(tp->rss_indir_tbl, old_indir, sizeof(old_indir));
+        rtl8127_setup_interrupt_mask(tp);
+        restore_rc = rtl8127_set_real_num_queue(tp);
+        if (!restore_rc && running)
+                restore_rc = rtl8127_open(dev);
+        if (restore_rc) {
+                netdev_err(dev, "Failed to restore channels: %d\n", restore_rc);
+                if (running)
+                        dev_close(dev);
+        }
+
+        return rc;
+}
+#endif
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) */
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,4,22)
@@ -7346,6 +7443,9 @@ static const struct ethtool_ops rtl8127_ethtool_ops = {
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0) */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
         .get_channels		= rtl8127_get_channels,
+#if defined(ENABLE_RSS_SUPPORT) && defined(ENABLE_MULTIPLE_TX_QUEUE) && !defined(ENABLE_LIB_SUPPORT)
+        .set_channels           = rtl8127_set_channels,
+#endif
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) */
         .nway_reset = rtl_nway_reset,
 
@@ -13214,12 +13314,16 @@ rtl8127_init_software_variable(struct net_device *dev)
 #else
         if (tp->HwSuppRssVer > 0 && tp->HwCurrIsrVer > 1) {
                 u8 rss_queue_num = netif_get_num_default_rss_queues();
-                tp->num_rx_rings = min(tp->HwSuppNumRxQueues, rss_queue_num);
+                tp->num_rx_rings = rounddown_pow_of_two(
+                        max_t(unsigned int, 1,
+                              min(tp->HwSuppNumRxQueues, rss_queue_num)));
                 if (!(tp->num_rx_rings >= 2 && tp->irq_nvecs >= tp->num_rx_rings))
                         tp->num_rx_rings = 1;
 
-                if (tp->num_rx_rings >= 2)
-                        tp->EnableRss = 1;
+                /* Keep RSS descriptors/hash state valid even with one RX ring,
+                 * so ethtool can grow the queue count without changing format.
+                 */
+                tp->EnableRss = 1;
         }
 #endif
 #endif
@@ -15695,7 +15799,7 @@ int rtl8127_open(struct net_device *dev)
 
         retval = rtl8127_alloc_irq(tp);
         if (retval < 0)
-                goto err_free_all_allocated_mem;
+                goto err_clear_rx;
 
         if (netif_msg_probe(tp)) {
                 printk(KERN_INFO "%s: 0x%lx, "
@@ -15748,6 +15852,8 @@ out:
 
         return retval;
 
+err_clear_rx:
+        rtl8127_rx_clear(tp);
 err_free_all_allocated_mem:
         rtl8127_free_alloc_resources(tp);
 

@@ -55,6 +55,31 @@ After installation, you can perform the following checks to ensure the driver is
     sudo modprobe r8127
     ```
 
+## Configuring queues (11.016.00-2 and later)
+
+This package enables RSS and multiple TX queues and adds channel configuration:
+
+```bash
+sudo ethtool -L enp1s0 rx 4 tx 4
+ethtool -l enp1s0
+```
+
+RX and TX counts must each be 1, 2, 4, or 8, within the limits reported by
+`ethtool -l`. Multiple queues require MSI-X resources. Combined and other
+channels are not supported. Changing queues on an active interface briefly
+interrupts traffic while the driver rebuilds the rings; use a local console
+if this interface carries your remote connection. Settings last until the
+device is reprobed or the system reboots.
+
+Default RSS mappings are redistributed when the RX count changes. Custom
+mappings are preserved; shrinking is rejected if they reference a removed
+queue. Adjust them with `ethtool -X` before retrying. If reconfiguration fails,
+the driver attempts to restore the previous queues and RSS mapping.
+
+The channel handler has host-side regression tests, runnable with
+`python3 tests/test_channels.py`. These mock hardware operations and do not
+replace testing queue changes and traffic on an RTL8127 adapter.
+
 ## Building the DKMS .deb Package
 
 If you wish to build the `.deb` package from the source yourself, follow these steps.
