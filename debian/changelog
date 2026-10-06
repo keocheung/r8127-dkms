@@ -1,3 +1,9 @@
+r8127 (11.016.00-1) unstable; urgency=low
+
+  * Update upstream driver to version 11.016.00.
+
+ -- Alpha Area <awpak78@hotmail.com>  Tue, 06 Oct 2026 18:10:21 +0800
+
 r8127 (11.015.00-1) unstable; urgency=low
 
   * Initial release.
