@@ -89,6 +89,10 @@
 #include "rtltool.h"
 #include "r8127_firmware.h"
 
+#ifdef ENABLE_R8127_HWMON
+#include <linux/hwmon.h>
+#endif
+
 #ifdef ENABLE_R8127_PROCFS
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -643,6 +647,102 @@ static int rtl8127_read_thermal_sensor(struct rtl8127_private *tp)
         else
                 return (tmp / 2);
 }
+
+#ifdef ENABLE_R8127_HWMON
+static umode_t rtl8127_hwmon_is_visible(const void *data,
+                                       enum hwmon_sensor_types type,
+                                       u32 attr, int channel)
+{
+        return type == hwmon_temp && attr == hwmon_temp_input && channel == 0
+               ? 0444 : 0;
+}
+
+static int rtl8127_hwmon_read(struct device *hwdev,
+                              enum hwmon_sensor_types type,
+                              u32 attr, int channel, long *val)
+{
+        struct rtl8127_private *tp = dev_get_drvdata(hwdev);
+        unsigned long flags;
+        int raw, ret = 0;
+
+        if (type != hwmon_temp || attr != hwmon_temp_input || channel != 0)
+                return -EOPNOTSUPP;
+
+        /* Serialize with open/close, suspend and diagnostic operations.
+         * Do not wait for RTNL while holding a sysfs active reference.
+         */
+        if (!rtnl_trylock())
+                return -EBUSY;
+
+        if (!netif_running(tp->dev) || !netif_device_present(tp->dev) ||
+            test_bit(R8127_FLAG_DOWN, tp->task_flags) ||
+            test_bit(R8127_FLAG_SUSPEND, tp->task_flags) ||
+            test_bit(R8127_FLAG_SHUTDOWN, tp->task_flags) ||
+            tp->pci_dev->current_state != PCI_D0) {
+                ret = -ENODATA;
+                goto out;
+        }
+        if (tp->rtk_enable_diag) {
+                ret = -EBUSY;
+                goto out;
+        }
+
+        r8127_spin_lock(&tp->phy_lock, flags);
+        raw = _rtl8127_read_thermal_sensor(tp);
+        r8127_spin_unlock(&tp->phy_lock, flags);
+
+        /* Signed 10-bit temperature, 0.5 degrees C per LSB.
+         * hwmon expects millidegrees C; preserve the fractional bit.
+         */
+        if (raw & 0x200)
+                raw -= 0x400;
+        *val = raw * 500L;
+out:
+        rtnl_unlock();
+        return ret;
+}
+
+static const struct hwmon_ops rtl8127_hwmon_ops = {
+        .is_visible = rtl8127_hwmon_is_visible,
+        .read = rtl8127_hwmon_read,
+};
+
+static const struct hwmon_channel_info * const rtl8127_hwmon_info[] = {
+        HWMON_CHANNEL_INFO(temp, HWMON_T_INPUT),
+        NULL
+};
+
+static const struct hwmon_chip_info rtl8127_hwmon_chip_info = {
+        .ops = &rtl8127_hwmon_ops,
+        .info = rtl8127_hwmon_info,
+};
+
+static void rtl8127_hwmon_init(struct rtl8127_private *tp)
+{
+        if (tp->mcfg != CFG_METHOD_1 && tp->mcfg != CFG_METHOD_2)
+                return;
+
+        tp->hwmon_dev = hwmon_device_register_with_info(&tp->pci_dev->dev,
+                            "r8127", tp, &rtl8127_hwmon_chip_info, NULL);
+        if (IS_ERR(tp->hwmon_dev)) {
+                dev_warn(&tp->pci_dev->dev, "Cannot register hwmon: %ld\n",
+                         PTR_ERR(tp->hwmon_dev));
+                tp->hwmon_dev = NULL;
+        }
+}
+
+static void rtl8127_hwmon_remove(struct rtl8127_private *tp)
+{
+        /* Drain sysfs readers before touching hardware or freeing netdev. */
+        if (tp->hwmon_dev) {
+                hwmon_device_unregister(tp->hwmon_dev);
+                tp->hwmon_dev = NULL;
+        }
+}
+#else
+static void rtl8127_hwmon_init(struct rtl8127_private *tp) { }
+static void rtl8127_hwmon_remove(struct rtl8127_private *tp) { }
+#endif
 
 int rtl8127_dump_tally_counter(struct rtl8127_private *tp, dma_addr_t paddr)
 {
@@ -15475,6 +15575,8 @@ rtl8127_init_one(struct pci_dev *pdev,
         rtl8127_sysfs_init(dev);
 #endif /* ENABLE_R8127_SYSFS */
 
+        rtl8127_hwmon_init(tp);
+
         printk(KERN_INFO "%s", GPL_CLAIM);
 
 out:
@@ -15506,6 +15608,8 @@ rtl8127_remove_one(struct pci_dev *pdev)
 
         assert(dev != NULL);
         assert(tp != NULL);
+
+        rtl8127_hwmon_remove(tp);
 
         set_bit(R8127_FLAG_DOWN, tp->task_flags);
 

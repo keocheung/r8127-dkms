@@ -417,6 +417,12 @@ do { \
 #define ENABLE_R8127_SYSFS
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+#if IS_REACHABLE(CONFIG_HWMON)
+#define ENABLE_R8127_HWMON
+#endif
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 #define NETIF_F_HW_VLAN_RX	NETIF_F_HW_VLAN_CTAG_RX
 #define NETIF_F_HW_VLAN_TX	NETIF_F_HW_VLAN_CTAG_TX
@@ -2618,6 +2624,9 @@ struct rtl8127_private {
         u16 HwSuppNumRxQueues;
         unsigned int num_tx_rings;
         unsigned int num_rx_rings;
+#ifdef ENABLE_R8127_HWMON
+        struct device *hwmon_dev;
+#endif
         struct rtl8127_tx_ring tx_ring[R8127_MAX_TX_QUEUES];
         struct rtl8127_rx_ring rx_ring[R8127_MAX_RX_QUEUES];
 #ifdef ENABLE_LIB_SUPPORT

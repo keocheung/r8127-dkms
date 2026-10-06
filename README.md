@@ -80,6 +80,20 @@ The channel handler has host-side regression tests, runnable with
 `python3 tests/test_channels.py`. These mock hardware operations and do not
 replace testing queue changes and traffic on an RTL8127 adapter.
 
+## Temperature monitoring (11.016.00-3 and later)
+
+With kernel 4.10 or later and `CONFIG_HWMON` enabled, the driver registers a
+read-only `r8127` hwmon device under its PCI device. Run `sensors` to view the
+temperature, or read `/sys/class/hwmon/hwmonX/temp1_input` where `hwmonX/name`
+contains `r8127`. The raw value is in millidegrees Celsius (47500 = 47.5 C).
+No `testmode` setting is required. Each adapter has its own hwmon device.
+
+The interface must be administratively up. Reads return no data while it is
+down, suspended or shutting down, and may return busy during reconfiguration
+or diagnostics. The existing `/proc` diagnostic interface remains available.
+Run `python3 tests/test_hwmon.py` for the mocked sensor regression tests;
+hardware readings and suspend/resume still require validation on an adapter.
+
 ## Building the DKMS .deb Package
 
 If you wish to build the `.deb` package from the source yourself, follow these steps.
