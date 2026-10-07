@@ -17053,6 +17053,10 @@ static void rtl8127_cancel_schedule_dash_work(struct rtl8127_private *tp)
 
 static void rtl8127_schedule_sds_sfp_cap_work(struct rtl8127_private *tp)
 {
+        /* SFP capability polling only applies to the fiber variant. */
+        if (tp->HwFiberModeVer != FIBER_MODE_RTL8127ATF)
+                return;
+
         set_bit(R8127_FLAG_TASK_SDS_SFP_CAP_PENDING, tp->task_flags);
         schedule_delayed_work(&tp->sds_sfp_cap_task, RTL8127_CHECK_SDS_SFP_CAP_TIMEOUT);
 }

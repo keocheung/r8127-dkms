@@ -1,3 +1,10 @@
+r8127 (11.016.00-4) unstable; urgency=medium
+
+  * Skip periodic SFP capability polling on non-fiber devices on modern kernels.
+    Match the existing fiber-mode guard in the legacy scheduling path.
+
+ -- Alpha Area <awpak78@hotmail.com>  Wed, 07 Oct 2026 19:04:25 +0800
+
 r8127 (11.016.00-3) unstable; urgency=medium
 
   * Expose the PHY temperature through a read-only hwmon interface.
