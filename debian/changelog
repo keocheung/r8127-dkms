@@ -5,34 +5,34 @@ r8127 (11.017.02-1) unstable; urgency=low
   * Rebase RSS/multi-queue, ethtool channel changes, and hwmon temperature
     monitoring patches onto 11.017.02.
 
- -- Alpha Area <awpak78@hotmail.com>  Sun, 22 Nov 2026 16:35:00 +0800
+ -- Keo Cheung <keocheung@outlook.com>  Sun, 22 Nov 2026 16:35:00 +0800
 
 r8127 (11.016.00-4) unstable; urgency=medium
 
   * Skip periodic SFP capability polling on non-fiber devices on modern kernels.
     Match the existing fiber-mode guard in the legacy scheduling path.
 
- -- Alpha Area <awpak78@hotmail.com>  Wed, 07 Oct 2026 19:04:25 +0800
+ -- Keo Cheung <keocheung@outlook.com>  Wed, 07 Oct 2026 19:04:25 +0800
 
 r8127 (11.016.00-3) unstable; urgency=medium
 
   * Expose the PHY temperature through a read-only hwmon interface.
   * Serialize sensor reads with PHY access and guard inactive devices.
 
- -- Alpha Area <awpak78@hotmail.com>  Tue, 06 Oct 2026 21:28:46 +0800
+ -- Keo Cheung <keocheung@outlook.com>  Tue, 06 Oct 2026 21:28:46 +0800
 
 r8127 (11.016.00-2) unstable; urgency=medium
 
   * Enable RSS and multiple transmit queues.
   * Support ethtool channel changes with validation and failure rollback.
 
- -- Alpha Area <awpak78@hotmail.com>  Tue, 06 Oct 2026 18:34:42 +0800
+ -- Keo Cheung <keocheung@outlook.com>  Tue, 06 Oct 2026 18:34:42 +0800
 
 r8127 (11.016.00-1) unstable; urgency=low
 
   * Update upstream driver to version 11.016.00.
 
- -- Alpha Area <awpak78@hotmail.com>  Tue, 06 Oct 2026 18:10:21 +0800
+ -- Keo Cheung <keocheung@outlook.com>  Tue, 06 Oct 2026 18:10:21 +0800
 
 r8127 (11.015.00-1) unstable; urgency=low
 
