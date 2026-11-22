@@ -1,3 +1,12 @@
+r8127 (11.017.02-1) unstable; urgency=low
+
+  * Update upstream driver to version 11.017.02.
+  * Drop local SFP polling fix (merged upstream).
+  * Rebase RSS/multi-queue, ethtool channel changes, and hwmon temperature
+    monitoring patches onto 11.017.02.
+
+ -- Alpha Area <awpak78@hotmail.com>  Sun, 22 Nov 2026 16:35:00 +0800
+
 r8127 (11.016.00-4) unstable; urgency=medium
 
   * Skip periodic SFP capability polling on non-fiber devices on modern kernels.
